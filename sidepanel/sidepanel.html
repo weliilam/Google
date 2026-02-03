@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>网络请求分析器 - 侧边栏</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 头部 -->
+    <header class="header">
+      <h1>🌐 网络请求分析器</h1>
+      <div class="actions">
+        <button id="refreshBtn" class="btn btn-primary">刷新</button>
+        <button id="clearBtn" class="btn btn-secondary">清空</button>
+        <button id="exportBtn" class="btn btn-secondary">导出</button>
+      </div>
+    </header>
+
+    <!-- 过滤器 -->
+    <div class="filters">
+      <div class="filter-group">
+        <label>方法:</label>
+        <select id="methodFilter">
+          <option value="all">全部</option>
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="DELETE">DELETE</option>
+          <option value="PATCH">PATCH</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>类型:</label>
+        <select id="typeFilter">
+          <option value="all">全部</option>
+          <option value="xhr">XHR</option>
+          <option value="fetch">Fetch</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>状态:</label>
+        <select id="statusFilter">
+          <option value="all">全部</option>
+          <option value="success">成功 (2xx)</option>
+          <option value="error">错误 (4xx/5xx)</option>
+          <option value="pending">进行中</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>搜索:</label>
+        <input type="text" id="searchFilter" placeholder="搜索 URL...">
+      </div>
+    </div>
+
+    <!-- 统计信息 -->
+    <div class="stats">
+      <div class="stat-item">
+        <span class="stat-label">总请求:</span>
+        <span class="stat-value" id="totalRequests">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">成功:</span>
+        <span class="stat-value success" id="successRequests">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">失败:</span>
+        <span class="stat-value error" id="errorRequests">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">数据量:</span>
+        <span class="stat-value" id="totalSize">0 B</span>
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-content">
+      <!-- 请求列表 -->
+      <div class="request-list">
+        <div id="requestContainer">
+          <div class="empty-state">
+            <p>暂无请求</p>
+            <p class="hint">刷新页面或执行操作后开始捕获</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 请求详情 -->
+      <div class="request-details">
+        <div id="detailsContent" class="details-placeholder">
+          <p>点击请求查看详情</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

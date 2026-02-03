@@ -1,77 +1,106 @@
-// 内容脚本：拦截和修改页面请求（可选增强功能）
-
-// 这里可以添加页面级别的请求拦截逻辑
-// 例如：使用 XMLHttpRequest/Fetch API 的包装器来捕获更详细的请求信息
+// Content Script - 拦截 Fetch API 和 XMLHttpRequest 以捕获响应体
 
 (function() {
   'use strict';
-  
-  // 包装 XMLHttpRequest
-  const OriginalXHR = window.XMLHttpRequest;
-  
-  window.XMLHttpRequest = function() {
-    const xhr = new OriginalXHR();
-    const originalOpen = xhr.open;
-    const originalSend = xhr.send;
+
+  console.log('Network Analyzer Content Script loaded');
+
+  // 生成唯一请求 ID
+  function generateRequestId(url, method) {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${method}-${url.length}`;
+  }
+
+  // 拦截 Fetch API
+  const originalFetch = window.fetch;
+  window.fetch = async function(...args) {
+    const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+    const method = (args[1]?.method || 'GET').toUpperCase();
     
-    let requestData = {
-      method: null,
-      url: null,
-      body: null
-    };
+    const requestId = generateRequestId(url, method);
     
-    xhr.open = function(method, url) {
-      requestData.method = method.toUpperCase();
-      requestData.url = url;
-      return originalOpen.apply(xhr, arguments);
-    };
-    
-    xhr.send = function(body) {
-      requestData.body = body;
+    try {
+      const response = await originalFetch(...args);
+      const clonedResponse = response.clone();
       
-      // 发送消息到background
-      if (requestData.method && requestData.url) {
+      // 尝试获取响应体
+      try {
+        const body = await clonedResponse.text();
+        
+        // 发送到 background
         chrome.runtime.sendMessage({
-          action: 'xhrRequest',
-          data: requestData
+          action: 'saveResponseBody',
+          requestId: requestId,
+          tabId: chrome?.tabs?.getCurrent ? chrome.tabs.getCurrent().then(tab => tab.id) : null,
+          responseBody: body
+        }).catch(() => {
+          // 忽略错误（可能是 background 未准备好）
         });
+      } catch (e) {
+        console.error('Failed to read response body:', e);
       }
       
-      return originalSend.apply(xhr, arguments);
-    };
-    
-    return xhr;
-  };
-  
-  // 包装 Fetch API
-  const OriginalFetch = window.fetch;
-  
-  window.fetch = function(input, init) {
-    const requestData = {
-      method: (init?.method || 'GET').toUpperCase(),
-      url: typeof input === 'string' ? input : input.url,
-      body: init?.body
-    };
-    
-    // 发送消息到background
-    chrome.runtime.sendMessage({
-      action: 'fetchRequest',
-      data: requestData
-    });
-    
-    return OriginalFetch.apply(window, arguments);
-  };
-  
-  // 监听来自popup的消息
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'getPageInfo') {
-      sendResponse({
-        url: window.location.href,
-        title: document.title,
-        timestamp: Date.now()
-      });
+      return response;
+    } catch (error) {
+      console.error('Fetch error:', error);
+      throw error;
     }
-  });
-  
-  console.log('网络请求分析器 - Content Script已加载');
+  };
+
+  // 拦截 XMLHttpRequest
+  const originalXHROpen = XMLHttpRequest.prototype.open;
+  const originalXHRSend = XMLHttpRequest.prototype.send;
+  const originalXHROpen_orig = XMLHttpRequest.prototype.open;
+  const originalXHRSend_orig = XMLHttpRequest.prototype.send;
+  const originalXHRSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+
+  XMLHttpRequest.prototype.open = function(method, url, ...args) {
+    this._requestId = generateRequestId(url, method);
+    this._requestMethod = method;
+    this._requestUrl = url;
+    return originalXHROpen.apply(this, [method, url, ...args]);
+  };
+
+  XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+    if (!this._requestHeaders) {
+      this._requestHeaders = {};
+    }
+    this._requestHeaders[name] = value;
+    return originalXHRSetRequestHeader.apply(this, [name, value]);
+  };
+
+  XMLHttpRequest.prototype.send = function(...args) {
+    const xhr = this;
+    const requestId = this._requestId;
+    
+    const originalOnReadyStateChange = xhr.onreadystatechange || function() {};
+    
+    xhr.onreadystatechange = function() {
+      originalOnReadyStateChange.call(xhr);
+      
+      if (xhr.readyState === 4) {
+        try {
+          // 获取响应体
+          const body = xhr.responseText || xhr.response;
+          
+          if (body) {
+            // 发送到 background
+            chrome.runtime.sendMessage({
+              action: 'saveResponseBody',
+              requestId: requestId,
+              tabId: null, // XHR 可能无法获取 tabId
+              responseBody: body
+            }).catch(() => {
+              // 忽略错误
+            });
+          }
+        } catch (e) {
+          console.error('Failed to read XHR response:', e);
+        }
+      }
+    };
+    
+    return originalXHRSend.apply(this, args);
+  };
+
+  console.log('Network Analyzer: Fetch and XMLHttpRequest interceptors installed');
 })();

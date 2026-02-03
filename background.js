@@ -1,124 +1,28 @@
-// 背景脚本：拦截和存储HTTP请求
+// Background Service Worker
 
-// 存储当前标签页的请求
-let requestStore = new Map();
-let maxRequestsPerTab = 100; // 每个标签页最多存储100个请求
+// 存储所有请求的数据
+const tabRequests = new Map();
 
-// 请求类型分类
-function classifyRequest(details) {
-  const method = details.method.toUpperCase();
-  const url = new URL(details.url);
-  
-  // 根据方法分类
-  const typeMap = {
-    'GET': '读取',
-    'POST': '创建',
-    'PUT': '更新',
-    'PATCH': '部分更新',
-    'DELETE': '删除',
-    'HEAD': '头部',
-    'OPTIONS': '选项'
-  };
-  
-  return {
-    type: typeMap[method] || method,
-    method: method,
-    isApi: url.pathname.match(/^\/api\//) || 
-           url.pathname.match(/\.(json|xml)$/) ||
-           url.searchParams.has('callback')
-  };
-}
-
-// 格式化请求头
-function formatHeaders(headers) {
-  const formatted = {};
-  headers.forEach(header => {
-    formatted[header.name] = header.value;
-  });
-  return formatted;
-}
-
-// 获取请求参数
-function getRequestParams(details) {
-  try {
-    const url = new URL(details.url);
-    const params = {};
-    
-    // URL参数
-    if (details.method === 'GET') {
-      url.searchParams.forEach((value, key) => {
-        params[key] = value;
-      });
-    }
-    
-    // 如果有请求体（注意：webRequest API在某些情况下无法获取完整body）
-    if (details.requestBody && details.requestBody.formData) {
-      Object.keys(details.requestBody.formData).forEach(key => {
-        params[key] = details.requestBody.formData[key][0];
-      });
-    }
-    
-    return Object.keys(params).length > 0 ? params : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-// 存储请求
-function storeRequest(tabId, requestData) {
-  if (!requestStore.has(tabId)) {
-    requestStore.set(tabId, []);
-  }
-  
-  const requests = requestStore.get(tabId);
-  
-  // 检查是否已存在相同请求
-  const existsIndex = requests.findIndex(r => 
-    r.requestId === requestData.requestId
-  );
-  
-  if (existsIndex >= 0) {
-    // 更新现有请求
-    requests[existsIndex] = { ...requests[existsIndex], ...requestData };
-  } else {
-    // 添加新请求
-    requests.unshift(requestData);
-    
-    // 限制数量
-    if (requests.length > maxRequestsPerTab) {
-      requests.pop();
-    }
-  }
-  
-  // 同步到storage
-  chrome.storage.local.set({
-    [`requests_${tabId}`]: requests
-  });
-}
-
-// 监听请求发送前
+// 监听 webRequest 事件
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
-    if (details.tabId <= 0) return; // 忽略非标签页请求
+    const requestId = `${details.requestId}-${details.tabId}`;
     
-    const classification = classifyRequest(details);
-    const params = getRequestParams(details);
-    
-    const requestData = {
-      requestId: details.requestId,
-      url: details.url,
+    // 初始化请求数据
+    tabRequests.set(requestId, {
+      id: requestId,
+      tabId: details.tabId,
       method: details.method,
-      type: classification.type,
-      isApi: classification.isApi,
-      timestamp: Date.now(),
-      requestHeaders: null,
-      requestBody: params,
-      responseHeaders: null,
-      statusCode: null,
-      responseBody: null
-    };
-    
-    storeRequest(details.tabId, requestData);
+      url: details.url,
+      type: getRequestType(details),
+      statusCode: 0,
+      duration: 0,
+      startTime: Date.now(),
+      requestBody: null,
+      responseBody: null,
+      requestHeaders: {},
+      responseHeaders: {}
+    });
   },
   { urls: ['<all_urls>'] },
   ['requestBody']
@@ -127,67 +31,185 @@ chrome.webRequest.onBeforeRequest.addListener(
 // 监听请求头
 chrome.webRequest.onSendHeaders.addListener(
   (details) => {
-    if (details.tabId <= 0) return;
+    const requestId = `${details.requestId}-${details.tabId}`;
+    const request = tabRequests.get(requestId);
     
-    const tabRequests = requestStore.get(details.tabId);
-    if (!tabRequests) return;
-    
-    const request = tabRequests.find(r => r.requestId === details.requestId);
     if (request) {
-      request.requestHeaders = formatHeaders(details.requestHeaders);
-      storeRequest(details.tabId, request);
+      request.requestHeaders = {};
+      details.requestHeaders.forEach(header => {
+        request.requestHeaders[header.name] = header.value;
+      });
+      
+      // 如果有请求体，尝试解析
+      if (details.requestBody) {
+        if (details.requestBody.raw && details.requestBody.raw.length > 0) {
+          try {
+            const decoder = new TextDecoder();
+            request.requestBody = decoder.decode(details.requestBody.raw[0].bytes);
+          } catch (e) {
+            console.error('解析请求体失败:', e);
+          }
+        } else if (details.requestBody.formData) {
+          request.requestBody = JSON.stringify(details.requestBody.formData);
+        }
+      }
     }
   },
   { urls: ['<all_urls>'] },
-  ['requestHeaders']
+  ['requestHeaders', 'requestBody']
 );
 
 // 监听响应头
 chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
-    if (details.tabId <= 0) return;
+    const requestId = `${details.requestId}-${details.tabId}`;
+    const request = tabRequests.get(requestId);
     
-    const tabRequests = requestStore.get(details.tabId);
-    if (!tabRequests) return;
-    
-    const request = tabRequests.find(r => r.requestId === details.requestId);
     if (request) {
       request.statusCode = details.statusCode;
-      request.responseHeaders = formatHeaders(details.responseHeaders);
-      request.contentType = details.responseHeaders?.find(
-        h => h.name.toLowerCase() === 'content-type'
-      )?.value || '';
-      
-      storeRequest(details.tabId, request);
+      request.responseHeaders = {};
+      details.responseHeaders.forEach(header => {
+        request.responseHeaders[header.name] = header.value;
+      });
     }
   },
   { urls: ['<all_urls>'] },
   ['responseHeaders']
 );
 
-// 清理关闭标签页的数据
-chrome.tabs.onRemoved.addListener((tabId) => {
-  requestStore.delete(tabId);
-  chrome.storage.local.remove([`requests_${tabId}`]);
-});
+// 监听请求完成
+chrome.webRequest.onCompleted.addListener(
+  (details) => {
+    const requestId = `${details.requestId}-${details.tabId}`;
+    const request = tabRequests.get(requestId);
+    
+    if (request) {
+      request.duration = details.timeStamp - request.startTime;
+      
+      // 通知 Side Panel 更新
+      notifySidePanel(details.tabId);
+    }
+  },
+  { urls: ['<all_urls>'] }
+);
 
-// 监听消息（从popup）
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'getRequests') {
-    const tabId = request.tabId;
-    const requests = requestStore.get(tabId) || [];
-    sendResponse({ requests: requests });
-  } else if (request.action === 'clearRequests') {
-    const tabId = request.tabId;
-    requestStore.set(tabId, []);
-    chrome.storage.local.set({ [`requests_${tabId}`]: [] });
+// 监听请求错误
+chrome.webRequest.onErrorOccurred.addListener(
+  (details) => {
+    const requestId = `${details.requestId}-${details.tabId}`;
+    const request = tabRequests.get(requestId);
+    
+    if (request) {
+      request.statusCode = 0;
+      request.error = details.error;
+      request.duration = details.timeStamp - request.startTime;
+      
+      // 通知 Side Panel 更新
+      notifySidePanel(details.tabId);
+    }
+  },
+  { urls: ['<all_urls>'] }
+);
+
+// 监听来自 content script 的消息（响应体数据）
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'saveResponseBody') {
+    const { requestId, tabId, responseBody } = message;
+    
+    // 查找对应的请求
+    for (const [key, request] of tabRequests.entries()) {
+      if (request.id === requestId && request.tabId === tabId) {
+        request.responseBody = responseBody;
+        
+        // 通知 Side Panel 更新
+        notifySidePanel(tabId);
+        break;
+      }
+    }
+    
     sendResponse({ success: true });
   }
-  return true; // 保持消息通道开放
+  
+  if (message.action === 'getRequests') {
+    const { tabId } = message;
+    const requests = getRequestsByTabId(tabId);
+    sendResponse({ requests });
+    return true;
+  }
+  
+  if (message.action === 'clearRequests') {
+    const { tabId } = message;
+    clearRequestsByTabId(tabId);
+    sendResponse({ success: true });
+  }
+  
+  if (message.action === 'openSidePanel') {
+    chrome.sidePanel.open({ tabId: message.tabId });
+  }
 });
 
-// 获取当前活动标签页
-async function getCurrentTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tab;
+// 判断请求类型
+function getRequestType(details) {
+  if (details.type === 'xmlhttprequest') {
+    return 'xhr';
+  }
+  
+  // 检查是否是 fetch 请求
+  const url = details.url.toLowerCase();
+  if (url.includes('.json') || url.includes('api/') || 
+      details.requestHeaders?.some(h => h.name.toLowerCase() === 'x-requested-with' && h.value === 'XMLHttpRequest')) {
+    return 'fetch';
+  }
+  
+  return 'other';
 }
+
+// 根据 tabId 获取请求列表
+function getRequestsByTabId(tabId) {
+  const requests = [];
+  for (const [key, request] of tabRequests.entries()) {
+    if (request.tabId === tabId) {
+      requests.push(request);
+    }
+  }
+  
+  // 按时间倒序排列
+  return requests.sort((a, b) => b.startTime - a.startTime);
+}
+
+// 根据 tabId 清空请求列表
+function clearRequestsByTabId(tabId) {
+  for (const [key, request] of tabRequests.entries()) {
+    if (request.tabId === tabId) {
+      tabRequests.delete(key);
+    }
+  }
+}
+
+// 通知 Side Panel 更新
+function notifySidePanel(tabId) {
+  // 发送消息给 Side Panel
+  chrome.runtime.sendMessage({
+    action: 'requestUpdated',
+    tabId: tabId
+  }).catch(() => {
+    // 忽略错误（可能没有打开 Side Panel）
+  });
+}
+
+// 监听标签页关闭，清理对应的数据
+chrome.tabs.onRemoved.addListener((tabId) => {
+  clearRequestsByTabId(tabId);
+});
+
+// 监听扩展图标点击，打开 Side Panel
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.open({ tabId: tab.id });
+});
+
+// 监听标签页更新，重新打开 Side Panel（如果已打开）
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete') {
+    notifySidePanel(tabId);
+  }
+});

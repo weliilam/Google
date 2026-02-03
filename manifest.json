@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "网络请求分析器",
-  "version": "4.0.0",
-  "description": "完美模拟F12 Network面板，全量捕获网页请求，支持响应体查看和字段翻译",
+  "version": "5.0.0",
+  "description": "完美模拟F12 Network面板，侧边栏显示，全量捕获网页请求，支持响应体查看和字段翻译",
   "permissions": [
     "webRequest",
     "webNavigation",
     "storage",
-    "activeTab"
+    "activeTab",
+    "sidePanel"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -16,7 +17,6 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -30,6 +30,9 @@
       "run_at": "document_start"
     }
   ],
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
