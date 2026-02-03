@@ -1,15 +1,20 @@
 // Popup 脚本 - 用于打开 Side Panel
 
 document.addEventListener('DOMContentLoaded', async () => {
+  console.log('[Popup] Loading...');
+  
   // 获取当前标签页
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab) return;
+  if (!tab) {
+    console.log('[Popup] No active tab');
+    return;
+  }
   
-  // 自动打开 Side Panel
-  openSidePanel(tab.id);
+  console.log('[Popup] Current tab:', tab.id, tab.url);
   
   // 绑定按钮事件
   document.getElementById('openSidePanel').addEventListener('click', () => {
+    console.log('[Popup] Opening side panel for tab:', tab.id);
     openSidePanel(tab.id);
   });
   
@@ -24,7 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         showNotification('请求列表已刷新');
       }
     } catch (error) {
-      console.error('刷新失败:', error);
+      console.error('[Popup] Refresh failed:', error);
     }
   });
 });
@@ -32,15 +37,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 // 打开 Side Panel
 async function openSidePanel(tabId) {
   try {
-    // 检查 Side Panel 是否已启用
-    const panel = await chrome.sidePanel.getOptions({ tabId }).catch(() => null);
+    console.log('[Popup] Calling chrome.sidePanel.open with tabId:', tabId);
     
     // 打开 Side Panel
-    await chrome.sidePanel.open({ tabId });
+    await chrome.sidePanel.open({ windowId: await chrome.windows.getCurrent().then(w => w.id) });
     
+    console.log('[Popup] Side panel opened successfully');
     showNotification('侧边栏已打开');
+    
+    // 关闭 popup
+    setTimeout(() => {
+      window.close();
+    }, 500);
+    
   } catch (error) {
-    console.error('打开侧边栏失败:', error);
+    console.error('[Popup] Failed to open side panel:', error);
     showNotification('打开侧边栏失败，请重试', 'error');
   }
 }

@@ -126,6 +126,7 @@ async function loadRequests() {
         if (response && response.requests) {
           allRequests = response.requests;
           console.log('[Side Panel] Requests loaded:', allRequests.length);
+          console.log('[Side Panel] Requests:', allRequests);
           updateStats();
           renderRequests();
         }
@@ -258,6 +259,8 @@ function renderDetails() {
         <tr><th>请求类型</th><td>${selectedRequest.type}</td></tr>
         <tr><th>耗时</th><td>${formatDuration(selectedRequest.duration)}</td></tr>
         <tr><th>响应大小</th><td>${formatSize(selectedRequest.responseBody ? selectedRequest.responseBody.length : 0)}</td></tr>
+        <tr><th>请求ID</th><td>${selectedRequest.id}</td></tr>
+        <tr><th>Web Request ID</th><td>${selectedRequest.webRequestId}</td></tr>
       </table>
     </div>
     
@@ -427,13 +430,15 @@ function startAutoRefresh() {
   }
   
   autoRefreshInterval = setInterval(() => {
+    console.log('[Side Panel] Auto-refreshing...');
     loadRequests();
-  }, 1000); // 每秒刷新一次
+  }, 2000); // 每2秒刷新一次
 }
 
 // 监听来自 background 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'requestUpdated') {
+    console.log('[Side Panel] Request updated, refreshing...');
     loadRequests();
   }
 });
@@ -444,3 +449,5 @@ window.addEventListener('beforeunload', () => {
     clearInterval(autoRefreshInterval);
   }
 });
+
+console.log('[Side Panel] Loaded successfully');

@@ -255,18 +255,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // 判断请求类型
 function getRequestType(details) {
+  // XMLHTTPRequest
   if (details.type === 'xmlhttprequest') {
     return 'xhr';
   }
   
-  // 检查是否是 fetch 请求
+  // 检查请求头判断是否是 AJAX/Fetch
   const url = details.url.toLowerCase();
-  if (url.includes('.json') || url.includes('api/') || 
-      url.includes('/api') || url.includes('fetch')) {
+  const isApi = url.includes('.json') || 
+                url.includes('api/') || 
+                url.includes('/api') || 
+                url.includes('ajax') ||
+                url.includes('/v1/') ||
+                url.includes('/v2/');
+  
+  // 检查 Content-Type
+  const hasJsonHeader = false; // 需要在 onSendHeaders 中检查
+  
+  if (isApi) {
     return 'fetch';
   }
   
-  return 'other';
+  // 默认返回 original type
+  return details.type; // 'stylesheet', 'script', 'image', 'font', 'other', etc.
 }
 
 // 根据 tabId 获取请求列表
