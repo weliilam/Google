@@ -6,6 +6,9 @@ const tabRequests = new Map();
 // 监听 webRequest 事件
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
+    // 跳过扩展自己的请求
+    if (details.tabId === -1) return;
+    
     const requestId = `${details.requestId}-${details.tabId}`;
     
     // 初始化请求数据
@@ -31,6 +34,8 @@ chrome.webRequest.onBeforeRequest.addListener(
 // 监听请求头
 chrome.webRequest.onSendHeaders.addListener(
   (details) => {
+    if (details.tabId === -1) return;
+    
     const requestId = `${details.requestId}-${details.tabId}`;
     const request = tabRequests.get(requestId);
     
@@ -62,6 +67,8 @@ chrome.webRequest.onSendHeaders.addListener(
 // 监听响应头
 chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
+    if (details.tabId === -1) return;
+    
     const requestId = `${details.requestId}-${details.tabId}`;
     const request = tabRequests.get(requestId);
     
@@ -80,6 +87,8 @@ chrome.webRequest.onHeadersReceived.addListener(
 // 监听请求完成
 chrome.webRequest.onCompleted.addListener(
   (details) => {
+    if (details.tabId === -1) return;
+    
     const requestId = `${details.requestId}-${details.tabId}`;
     const request = tabRequests.get(requestId);
     
@@ -96,6 +105,8 @@ chrome.webRequest.onCompleted.addListener(
 // 监听请求错误
 chrome.webRequest.onErrorOccurred.addListener(
   (details) => {
+    if (details.tabId === -1) return;
+    
     const requestId = `${details.requestId}-${details.tabId}`;
     const request = tabRequests.get(requestId);
     
@@ -113,12 +124,25 @@ chrome.webRequest.onErrorOccurred.addListener(
 
 // 监听来自 content script 的消息（响应体数据）
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'getCurrentTabId') {
+    const tabId = sender.tab?.id;
+    sendResponse({ tabId });
+    return true;
+  }
+
   if (message.action === 'saveResponseBody') {
-    const { requestId, tabId, responseBody } = message;
+    const { requestId, responseBody } = message;
+    
+    // 获取发送消息的标签页 ID
+    const tabId = sender.tab?.id;
+    if (!tabId) {
+      sendResponse({ success: false });
+      return;
+    }
     
     // 查找对应的请求
     for (const [key, request] of tabRequests.entries()) {
-      if (request.id === requestId && request.tabId === tabId) {
+      if (request.tabId === tabId) {
         request.responseBody = responseBody;
         
         // 通知 Side Panel 更新
@@ -128,6 +152,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     
     sendResponse({ success: true });
+    return true;
   }
   
   if (message.action === 'getRequests') {
@@ -141,10 +166,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const { tabId } = message;
     clearRequestsByTabId(tabId);
     sendResponse({ success: true });
+    return true;
+  }
+  
+  if (message.action === 'refreshRequests') {
+    const { tabId } = message;
+    notifySidePanel(tabId);
+    sendResponse({ success: true });
+    return true;
   }
   
   if (message.action === 'openSidePanel') {
-    chrome.sidePanel.open({ tabId: message.tabId });
+    const { tabId } = message;
+    chrome.sidePanel.open({ tabId }).catch(() => {
+      // 忽略错误
+    });
   }
 });
 
@@ -157,7 +193,7 @@ function getRequestType(details) {
   // 检查是否是 fetch 请求
   const url = details.url.toLowerCase();
   if (url.includes('.json') || url.includes('api/') || 
-      details.requestHeaders?.some(h => h.name.toLowerCase() === 'x-requested-with' && h.value === 'XMLHttpRequest')) {
+      url.includes('/api') || url.includes('fetch')) {
     return 'fetch';
   }
   
@@ -202,12 +238,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   clearRequestsByTabId(tabId);
 });
 
-// 监听扩展图标点击，打开 Side Panel
-chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.open({ tabId: tab.id });
-});
-
-// 监听标签页更新，重新打开 Side Panel（如果已打开）
+// 监听标签页更新
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete') {
     notifySidePanel(tabId);

@@ -4,114 +4,109 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>网络请求分析器</title>
-  <link rel="stylesheet" href="popup.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-width: 300px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 8px;
+    }
+    
+    .description {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+    
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 12px 20px;
+      margin-bottom: 12px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: #1976d2;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #1565c0;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(25, 118, 210, 0.3);
+    }
+    
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+      border: 1px solid #d0d0d0;
+    }
+    
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+    
+    .info {
+      background: #e3f2fd;
+      border-left: 3px solid #1976d2;
+      padding: 12px;
+      border-radius: 4px;
+      margin-top: 16px;
+      font-size: 12px;
+      color: #333;
+      line-height: 1.5;
+    }
+    
+    .info strong {
+      color: #1976d2;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
-    <!-- 头部 -->
-    <div class="header">
-      <h1>网络请求分析器</h1>
-      <div class="actions">
-        <button id="clearBtn" class="btn btn-secondary">清空</button>
-        <button id="refreshBtn" class="btn btn-primary">刷新</button>
-      </div>
-    </div>
-
-    <!-- 过滤器 -->
-    <div class="filters">
-      <div class="filter-group">
-        <label>方法:</label>
-        <select id="methodFilter">
-          <option value="all">全部</option>
-          <option value="GET">GET</option>
-          <option value="POST">POST</option>
-          <option value="PUT">PUT</option>
-          <option value="DELETE">DELETE</option>
-          <option value="PATCH">PATCH</option>
-          <option value="HEAD">HEAD</option>
-          <option value="OPTIONS">OPTIONS</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label>类型:</label>
-        <select id="typeFilter">
-          <option value="all">全部</option>
-          <option value="xhr">XHR</option>
-          <option value="fetch">Fetch</option>
-          <option value="document">Document</option>
-          <option value="script">Script</option>
-          <option value="stylesheet">Stylesheet</option>
-          <option value="image">Image</option>
-          <option value="font">Font</option>
-          <option value="other">Other</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <label>状态:</label>
-        <select id="statusFilter">
-          <option value="all">全部</option>
-          <option value="2xx">2xx 成功</option>
-          <option value="3xx">3xx 重定向</option>
-          <option value="4xx">4xx 客户端错误</option>
-          <option value="5xx">5xx 服务器错误</option>
-          <option value="pending">Pending</option>
-        </select>
-      </div>
-      <div class="filter-group">
-        <input type="text" id="searchFilter" placeholder="搜索URL...">
-      </div>
-    </div>
-
-    <!-- 统计信息 -->
-    <div class="stats" id="stats">
-      <div class="stat-item">
-        <span class="stat-label">请求:</span>
-        <span class="stat-value" id="totalRequests">0</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">成功:</span>
-        <span class="stat-value success" id="successRequests">0</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">失败:</span>
-        <span class="stat-value error" id="errorRequests">0</span>
-      </div>
-      <div class="stat-item">
-        <span class="stat-label">体积:</span>
-        <span class="stat-value" id="totalSize">0 KB</span>
-      </div>
-    </div>
-
-    <!-- 主内容区 -->
-    <div class="main-content">
-      <!-- 请求列表 -->
-      <div class="request-list">
-        <div id="requestContainer">
-          <div class="empty-state">
-            <p>没有检测到请求</p>
-            <p class="hint">访问网页后点击刷新按钮</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- 请求详情面板 -->
-      <div class="request-details" id="requestDetails">
-        <div class="details-placeholder">
-          <p>选择一个请求查看详情</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- 翻译面板 -->
-    <div class="translation-panel" id="translationPanel" style="display: none;">
-      <div class="panel-header">
-        <h3>字段翻译</h3>
-        <button class="close-btn" id="closeTranslation">×</button>
-      </div>
-      <div class="translation-content" id="translationContent"></div>
+    <h1>🌐 网络请求分析器</h1>
+    <p class="description">
+      完美模拟 F12 Network 面板，侧边栏显示网页请求，支持响应体查看和字段翻译
+    </p>
+    
+    <button id="openSidePanel" class="btn btn-primary">打开侧边栏</button>
+    <button id="refreshRequests" class="btn btn-secondary">刷新请求列表</button>
+    
+    <div class="info">
+      <strong>提示：</strong>
+      <br>• 点击"打开侧边栏"查看当前页面的网络请求
+      <br>• 侧边栏会显示在页面右侧
+      <br>• 支持响应体查看和字段翻译
     </div>
   </div>
-
+  
   <script src="popup.js"></script>
 </body>
 </html>

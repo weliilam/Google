@@ -5,6 +5,16 @@
 
   console.log('Network Analyzer Content Script loaded');
 
+  // 获取当前标签页 ID
+  let currentTabId = null;
+  
+  // 尝试获取 tabId
+  chrome.runtime.sendMessage({ action: 'getCurrentTabId' }, (response) => {
+    if (response && response.tabId) {
+      currentTabId = response.tabId;
+    }
+  });
+
   // 生成唯一请求 ID
   function generateRequestId(url, method) {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${method}-${url.length}`;
@@ -16,8 +26,6 @@
     const url = typeof args[0] === 'string' ? args[0] : args[0].url;
     const method = (args[1]?.method || 'GET').toUpperCase();
     
-    const requestId = generateRequestId(url, method);
-    
     try {
       const response = await originalFetch(...args);
       const clonedResponse = response.clone();
@@ -26,15 +34,16 @@
       try {
         const body = await clonedResponse.text();
         
-        // 发送到 background
-        chrome.runtime.sendMessage({
-          action: 'saveResponseBody',
-          requestId: requestId,
-          tabId: chrome?.tabs?.getCurrent ? chrome.tabs.getCurrent().then(tab => tab.id) : null,
-          responseBody: body
-        }).catch(() => {
-          // 忽略错误（可能是 background 未准备好）
-        });
+        // 发送到 background（不使用 requestId，让 background 匹配）
+        if (currentTabId) {
+          chrome.runtime.sendMessage({
+            action: 'saveResponseBody',
+            tabId: currentTabId,
+            responseBody: body
+          }).catch(() => {
+            // 忽略错误（可能是 background 未准备好）
+          });
+        }
       } catch (e) {
         console.error('Failed to read response body:', e);
       }
@@ -49,8 +58,6 @@
   // 拦截 XMLHttpRequest
   const originalXHROpen = XMLHttpRequest.prototype.open;
   const originalXHRSend = XMLHttpRequest.prototype.send;
-  const originalXHROpen_orig = XMLHttpRequest.prototype.open;
-  const originalXHRSend_orig = XMLHttpRequest.prototype.send;
   const originalXHRSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
 
   XMLHttpRequest.prototype.open = function(method, url, ...args) {
@@ -70,7 +77,6 @@
 
   XMLHttpRequest.prototype.send = function(...args) {
     const xhr = this;
-    const requestId = this._requestId;
     
     const originalOnReadyStateChange = xhr.onreadystatechange || function() {};
     
@@ -82,12 +88,11 @@
           // 获取响应体
           const body = xhr.responseText || xhr.response;
           
-          if (body) {
+          if (body && currentTabId) {
             // 发送到 background
             chrome.runtime.sendMessage({
               action: 'saveResponseBody',
-              requestId: requestId,
-              tabId: null, // XHR 可能无法获取 tabId
+              tabId: currentTabId,
               responseBody: body
             }).catch(() => {
               // 忽略错误

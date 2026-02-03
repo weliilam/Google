@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "网络请求分析器",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "完美模拟F12 Network面板，侧边栏显示，全量捕获网页请求，支持响应体查看和字段翻译",
   "permissions": [
     "webRequest",
@@ -17,6 +17,7 @@
     "service_worker": "background.js"
   },
   "action": {
+    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
