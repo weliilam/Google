@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "网络请求分析器",
-  "version": "5.0.5",
+  "version": "5.0.6",
   "description": "完美模拟F12 Network面板，侧边栏显示，全量捕获网页请求，支持响应体查看和字段翻译",
   "permissions": [
     "sidePanel",
@@ -23,7 +23,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*", "file://*/*"],
       "js": ["content/content.js"],
       "run_at": "document_start",
       "all_frames": true
