@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>网络请求分析器</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 头部 -->
+    <div class="header">
+      <h1>网络请求分析器</h1>
+      <div class="actions">
+        <button id="clearBtn" class="btn btn-secondary">清空</button>
+        <button id="refreshBtn" class="btn btn-primary">刷新</button>
+      </div>
+    </div>
+
+    <!-- 过滤器 -->
+    <div class="filters">
+      <div class="filter-group">
+        <label>方法:</label>
+        <select id="methodFilter">
+          <option value="all">全部</option>
+          <option value="GET">GET</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="DELETE">DELETE</option>
+          <option value="PATCH">PATCH</option>
+          <option value="HEAD">HEAD</option>
+          <option value="OPTIONS">OPTIONS</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>类型:</label>
+        <select id="typeFilter">
+          <option value="all">全部</option>
+          <option value="xhr">XHR</option>
+          <option value="fetch">Fetch</option>
+          <option value="document">Document</option>
+          <option value="script">Script</option>
+          <option value="stylesheet">Stylesheet</option>
+          <option value="image">Image</option>
+          <option value="font">Font</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>状态:</label>
+        <select id="statusFilter">
+          <option value="all">全部</option>
+          <option value="2xx">2xx 成功</option>
+          <option value="3xx">3xx 重定向</option>
+          <option value="4xx">4xx 客户端错误</option>
+          <option value="5xx">5xx 服务器错误</option>
+          <option value="pending">Pending</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <input type="text" id="searchFilter" placeholder="搜索URL...">
+      </div>
+    </div>
+
+    <!-- 统计信息 -->
+    <div class="stats" id="stats">
+      <div class="stat-item">
+        <span class="stat-label">请求:</span>
+        <span class="stat-value" id="totalRequests">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">成功:</span>
+        <span class="stat-value success" id="successRequests">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">失败:</span>
+        <span class="stat-value error" id="errorRequests">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">体积:</span>
+        <span class="stat-value" id="totalSize">0 KB</span>
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-content">
+      <!-- 请求列表 -->
+      <div class="request-list">
+        <div id="requestContainer">
+          <div class="empty-state">
+            <p>没有检测到请求</p>
+            <p class="hint">访问网页后点击刷新按钮</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 请求详情面板 -->
+      <div class="request-details" id="requestDetails">
+        <div class="details-placeholder">
+          <p>选择一个请求查看详情</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 翻译面板 -->
+    <div class="translation-panel" id="translationPanel" style="display: none;">
+      <div class="panel-header">
+        <h3>字段翻译</h3>
+        <button class="close-btn" id="closeTranslation">×</button>
+      </div>
+      <div class="translation-content" id="translationContent"></div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

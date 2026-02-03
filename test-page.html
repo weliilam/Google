@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chrome 网络请求分析器 - 测试页面</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .container { background: #fff; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        h1 { color: #1976d2; margin-bottom: 20px; }
+        h2 { color: #333; margin-bottom: 15px; font-size: 18px; }
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        button {
+            padding: 12px 24px;
+            background: #1976d2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        button:hover { background: #1565c0; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .section { margin-bottom: 30px; }
+        .response {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            max-height: 400px;
+            overflow: auto;
+            font-family: 'Monaco', monospace;
+            font-size: 12px;
+            display: none;
+        }
+        .response.show { display: block; }
+        .loading { display: inline-block; margin-left: 10px; color: #666; }
+        .info { background: #e3f2fd; padding: 15px; border-radius: 4px; margin-bottom: 15px; }
+        .info p { margin-bottom: 8px; color: #333; }
+        .info strong { color: #1976d2; }
+    </style>
+</head>
+<body>
+    <h1>Chrome 网络请求分析器 - 测试页面</h1>
+
+    <div class="info">
+        <p><strong>使用说明：</strong></p>
+        <p>1. 在Chrome中打开开发者工具（F12）</p>
+        <p>2. 加载本扩展（如果尚未加载）</p>
+        <p>3. 点击下方的各种按钮发送不同类型的HTTP请求</p>
+        <p>4. 打开扩展插件，查看捕获的请求详情、响应体和字段翻译</p>
+    </div>
+
+    <!-- JSON GET 测试 -->
+    <div class="container section">
+        <h2>GET 请求测试 - JSON 数据</h2>
+        <div class="btn-group">
+            <button onclick="testGetJSON()">获取用户信息 (JSON)</button>
+            <button onclick="testGetJSONPatched()">获取订单列表 (JSON)</button>
+        </div>
+        <div id="getResponse" class="response"></div>
+    </div>
+
+    <!-- POST 测试 -->
+    <div class="container section">
+        <h2>POST 请求测试</h2>
+        <div class="btn-group">
+            <button onclick="testPostJSON()">创建用户 (POST JSON)</button>
+            <button onclick="testPostForm()">提交表单 (POST Form)</button>
+        </div>
+        <div id="postResponse" class="response"></div>
+    </div>
+
+    <!-- 其他方法测试 -->
+    <div class="container section">
+        <h2>其他 HTTP 方法测试</h2>
+        <div class="btn-group">
+            <button onclick="testPut()">更新用户 (PUT)</button>
+            <button onclick="testPatch()">部分更新 (PATCH)</button>
+            <button onclick="testDelete()">删除用户 (DELETE)</button>
+        </div>
+        <div id="otherResponse" class="response"></div>
+    </div>
+
+    <!-- 翻译字段测试 -->
+    <div class="container section">
+        <h2>字段翻译测试 - 包含中英文字段</h2>
+        <div class="btn-group">
+            <button onclick="testTranslation()">获取包含翻译字段的响应</button>
+        </div>
+        <div id="translationResponse" class="response"></div>
+    </div>
+
+    <!-- 批量请求测试 -->
+    <div class="container section">
+        <h2>批量请求测试</h2>
+        <div class="btn-group">
+            <button onclick="testBatchRequests()">发送多个并发请求</button>
+        </div>
+        <div id="batchResponse" class="response"></div>
+    </div>
+
+    <!-- 响应体测试 -->
+    <div class="container section">
+        <h2>响应体完整性测试</h2>
+        <div class="btn-group">
+            <button onclick="testLargeResponse()">获取大响应体数据</button>
+            <button onclick="testNestedJson()">获取嵌套JSON数据</button>
+        </div>
+        <div id="bodyResponse" class="response"></div>
+    </div>
+
+    <script>
+        // 工具函数：显示响应
+        function showResponse(elementId, data) {
+            const el = document.getElementById(elementId);
+            el.textContent = JSON.stringify(data, null, 2);
+            el.classList.add('show');
+        }
+
+        // 1. GET JSON 测试
+        function testGetJSON() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            fetch('https://jsonplaceholder.typicode.com/users/1')
+                .then(res => res.json())
+                .then(data => {
+                    showResponse('getResponse', {
+                        type: 'GET JSON',
+                        timestamp: new Date().toISOString(),
+                        data: data
+                    });
+                })
+                .catch(err => {
+                    showResponse('getResponse', { error: err.message });
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.textContent = '获取用户信息 (JSON)';
+                });
+        }
+
+        function testGetJSONPatched() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            fetch('https://jsonplaceholder.typicode.com/posts?_limit=5')
+                .then(res => res.json())
+                .then(data => {
+                    showResponse('getResponse', {
+                        type: 'GET List',
+                        timestamp: new Date().toISOString(),
+                        count: data.length,
+                        data: data
+                    });
+                })
+                .catch(err => {
+                    showResponse('getResponse', { error: err.message });
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.textContent = '获取订单列表 (JSON)';
+                });
+        }
+
+        // 2. POST 测试
+        function testPostJSON() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            const userData = {
+                userId: 123,
+                userName: '张三',
+                userEmail: 'zhangsan@example.com',
+                userPhone: '13800138000',
+                userStatus: 'active',
+                createdAt: '2024-01-01T00:00:00Z'
+            };
+            
+            fetch('https://jsonplaceholder.typicode.com/posts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userData)
+            })
+            .then(res => res.json())
+            .then(data => {
+                showResponse('postResponse', {
+                    type: 'POST JSON',
+                    timestamp: new Date().toISOString(),
+                    requestData: userData,
+                    response: data
+                });
+            })
+            .catch(err => {
+                showResponse('postResponse', { error: err.message });
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.textContent = '创建用户 (POST JSON)';
+            });
+        }
+
+        function testPostForm() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            const formData = new FormData();
+            formData.append('userId', '456');
+            formData.append('userName', '李四');
+            formData.append('userEmail', 'lisi@example.com');
+            
+            fetch('https://httpbin.org/post', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                showResponse('postResponse', {
+                    type: 'POST Form',
+                    timestamp: new Date().toISOString(),
+                    response: data
+                });
+            })
+            .catch(err => {
+                showResponse('postResponse', { error: err.message });
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.textContent = '提交表单 (POST Form)';
+            });
+        }
+
+        // 3. 其他方法测试
+        function testPut() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            fetch('https://jsonplaceholder.typicode.com/posts/1', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: 1,
+                    title: '更新的标题',
+                    body: '更新的内容',
+                    userId: 1
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                showResponse('otherResponse', {
+                    type: 'PUT',
+                    timestamp: new Date().toISOString(),
+                    response: data
+                });
+            })
+            .catch(err => {
+                showResponse('otherResponse', { error: err.message });
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.textContent = '更新用户 (PUT)';
+            });
+        }
+
+        function testPatch() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            fetch('https://jsonplaceholder.typicode.com/posts/1', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: '部分更新的标题' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                showResponse('otherResponse', {
+                    type: 'PATCH',
+                    timestamp: new Date().toISOString(),
+                    response: data
+                });
+            })
+            .catch(err => {
+                showResponse('otherResponse', { error: err.message });
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.textContent = '部分更新 (PATCH)';
+            });
+        }
+
+        function testDelete() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            fetch('https://jsonplaceholder.typicode.com/posts/1', {
+                method: 'DELETE'
+            })
+            .then(res => {
+                showResponse('otherResponse', {
+                    type: 'DELETE',
+                    timestamp: new Date().toISOString(),
+                    status: res.status
+                });
+            })
+            .catch(err => {
+                showResponse('otherResponse', { error: err.message });
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.textContent = '删除用户 (DELETE)';
+            });
+        }
+
+        // 4. 翻译字段测试
+        function testTranslation() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            const mockData = {
+                userId: 1001,
+                userName: '王五',
+                userEmail: 'wangwu@example.com',
+                userPhone: '13900139000',
+                userStatus: 'active',
+                userRole: 'admin',
+                userAge: 28,
+                userAddress: {
+                    province: '广东省',
+                    city: '深圳市',
+                    district: '南山区'
+                },
+                orderInfo: {
+                    orderId: 'ORD20240101001',
+                    orderTotal: 1999.99,
+                    orderItems: [
+                        { productId: 'P001', productName: '商品1', quantity: 2 },
+                        { productId: 'P002', productName: '商品2', quantity: 1 }
+                    ]
+                },
+                createdAt: '2024-01-01T00:00:00Z',
+                updatedAt: '2024-01-15T00:00:00Z',
+                isActive: true,
+                isDeleted: false
+            };
+            
+            // 模拟API延迟
+            setTimeout(() => {
+                showResponse('translationResponse', {
+                    type: 'Translation Test',
+                    timestamp: new Date().toISOString(),
+                    data: mockData
+                });
+                btn.disabled = false;
+                btn.textContent = '获取包含翻译字段的响应';
+            }, 500);
+        }
+
+        // 5. 批量请求测试
+        function testBatchRequests() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            Promise.all([
+                fetch('https://jsonplaceholder.typicode.com/users/1').then(r => r.json()),
+                fetch('https://jsonplaceholder.typicode.com/users/2').then(r => r.json()),
+                fetch('https://jsonplaceholder.typicode.com/users/3').then(r => r.json())
+            ])
+            .then(([user1, user2, user3]) => {
+                showResponse('batchResponse', {
+                    type: 'Batch Requests',
+                    timestamp: new Date().toISOString(),
+                    count: 3,
+                    data: [user1, user2, user3]
+                });
+            })
+            .catch(err => {
+                showResponse('batchResponse', { error: err.message });
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.textContent = '发送多个并发请求';
+            });
+        }
+
+        // 6. 响应体完整性测试
+        function testLargeResponse() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            // 生成大型JSON数据
+            const largeData = {
+                users: []
+            };
+            for (let i = 1; i <= 50; i++) {
+                largeData.users.push({
+                    userId: i,
+                    userName: `用户${i}`,
+                    userEmail: `user${i}@example.com`,
+                    userPhone: `138${String(i).padStart(8, '0')}`,
+                    userStatus: i % 2 === 0 ? 'active' : 'inactive',
+                    createdAt: new Date().toISOString(),
+                    orders: Array.from({ length: 5 }, (_, j) => ({
+                        orderId: `ORD${i}${j}`,
+                        orderTotal: Math.random() * 1000
+                    }))
+                });
+            }
+            
+            showResponse('bodyResponse', {
+                type: 'Large Response',
+                timestamp: new Date().toISOString(),
+                totalUsers: largeData.users.length,
+                data: largeData
+            });
+            
+            btn.disabled = false;
+            btn.textContent = '获取大响应体数据';
+        }
+
+        function testNestedJson() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '请求中...';
+            
+            const nestedData = {
+                userId: 1,
+                userName: '嵌套数据测试',
+                userProfile: {
+                    basicInfo: {
+                        name: '张三',
+                        age: 30,
+                        gender: '男'
+                    },
+                    contactInfo: {
+                        email: 'zhangsan@example.com',
+                        phone: '13800138000',
+                        address: {
+                            province: '广东省',
+                            city: '深圳市',
+                            district: '南山区',
+                            street: '科技园路1号'
+                        }
+                    },
+                    preferences: {
+                        language: 'zh-CN',
+                        timezone: 'Asia/Shanghai',
+                        theme: 'dark',
+                        notifications: {
+                            email: true,
+                            sms: false,
+                            push: true
+                        }
+                    }
+                },
+                permissions: {
+                    read: true,
+                    write: true,
+                    delete: false,
+                    admin: false
+                }
+            };
+            
+            showResponse('bodyResponse', {
+                type: 'Nested JSON',
+                timestamp: new Date().toISOString(),
+                data: nestedData
+            });
+            
+            btn.disabled = false;
+            btn.textContent = '获取嵌套JSON数据';
+        }
+    </script>
+</body>
+</html>
