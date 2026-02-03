@@ -8,25 +8,32 @@
   // 获取当前标签页 ID
   let currentTabId = null;
   let capturedRequests = new Map();
+  let requestCounter = 0;
   
-  // 获取 tabId
-  chrome.runtime.sendMessage({ action: 'getCurrentTabId' }, (response) => {
-    if (response && response.tabId) {
-      currentTabId = response.tabId;
-      console.log('[Content Script] Tab ID:', currentTabId);
+  // 异步获取 tabId
+  async function getTabId() {
+    try {
+      const response = await chrome.runtime.sendMessage({ action: 'getCurrentTabId' });
+      if (response && response.tabId) {
+        currentTabId = response.tabId;
+        console.log('[Content Script] Tab ID obtained:', currentTabId);
+      }
+    } catch (error) {
+      console.error('[Content Script] Failed to get tab ID:', error);
     }
-  });
+  }
+  
+  // 立即获取 tabId
+  getTabId();
+
+  // 生成唯一请求 ID
+  function generateRequestId() {
+    return `req_${Date.now()}_${++requestCounter}`;
+  }
 
   // 判断请求类型
   function getRequestType(url, options = {}) {
     const lowerUrl = url.toLowerCase();
-    
-    // 检查选项
-    if (options.method === 'POST' || options.method === 'PUT' || options.method === 'DELETE') {
-      if (lowerUrl.includes('.json') || lowerUrl.includes('api/')) {
-        return 'fetch';
-      }
-    }
     
     // 检查 URL
     if (lowerUrl.includes('.json') || 
@@ -36,23 +43,13 @@
       return 'fetch';
     }
     
-    // 检查 Content-Type
-    if (options.headers) {
-      const contentType = Object.keys(options.headers).find(key => 
-        key.toLowerCase() === 'content-type'
-      );
-      if (contentType && options.headers[contentType].includes('application/json')) {
-        return 'fetch';
-      }
-    }
-    
     // 默认类型
     return 'other';
   }
 
   // 捕获请求
   function captureRequest(url, method, type, startTime) {
-    const requestId = `req_${startTime}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = generateRequestId();
     capturedRequests.set(requestId, {
       requestId,
       url,
@@ -62,23 +59,32 @@
     });
     
     // 通知 background
-    chrome.runtime.sendMessage({
-      action: 'captureRequest',
-      tabId: currentTabId,
-      requestId,
-      url,
-      method,
-      type,
-      webRequestId: requestId
-    }).catch(() => {
-      // 忽略错误
-    });
+    if (currentTabId) {
+      chrome.runtime.sendMessage({
+        action: 'captureRequest',
+        tabId: currentTabId,
+        requestId,
+        url,
+        method,
+        type,
+        webRequestId: requestId
+      }).catch((error) => {
+        console.log('[Content Script] Failed to send captureRequest:', error);
+      });
+    } else {
+      console.log('[Content Script] Tab ID not ready, caching request:', requestId);
+    }
     
     return requestId;
   }
 
   // 更新请求
   function updateRequest(requestId, statusCode, duration, responseBody) {
+    if (!currentTabId) {
+      console.log('[Content Script] Tab ID not ready, cannot update request');
+      return;
+    }
+    
     // 通知 background
     chrome.runtime.sendMessage({
       action: 'updateRequest',
@@ -87,8 +93,8 @@
       statusCode,
       duration,
       responseBody
-    }).catch(() => {
-      // 忽略错误
+    }).catch((error) => {
+      console.log('[Content Script] Failed to send updateRequest:', error);
     });
     
     // 清理
@@ -141,6 +147,7 @@
     this._requestUrl = url;
     this._requestMethod = method;
     this._requestHeaders = {};
+    console.log('[Content Script] XHR open:', method, url);
     return originalXHROpen.apply(this, [method, url, ...args]);
   };
 
@@ -155,11 +162,11 @@
   XMLHttpRequest.prototype.send = function(...args) {
     const xhr = this;
     const url = xhr._requestUrl;
-    const method = xhr._requestMethod;
+    const method = xhr._requestMethod || 'GET';
     const type = 'xhr';
     const startTime = Date.now();
     
-    console.log('[Content Script] XHR intercepted:', method, url);
+    console.log('[Content Script] XHR send:', method, url);
     
     const requestId = captureRequest(url, method, type, startTime);
     
