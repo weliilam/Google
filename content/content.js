@@ -3,28 +3,35 @@
 (function() {
   'use strict';
 
-  console.log('Network Analyzer Content Script loaded');
+  console.log('[Content Script] Network Analyzer loaded');
 
   // 获取当前标签页 ID
   let currentTabId = null;
   
-  // 尝试获取 tabId
+  // 获取 tabId
   chrome.runtime.sendMessage({ action: 'getCurrentTabId' }, (response) => {
     if (response && response.tabId) {
       currentTabId = response.tabId;
+      console.log('[Content Script] Tab ID:', currentTabId);
     }
   });
 
-  // 生成唯一请求 ID
-  function generateRequestId(url, method) {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${method}-${url.length}`;
-  }
+  // 监听来自 background 的消息，获取 webRequestId
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'notifyWebRequest' && message.webRequestId) {
+      console.log('[Content Script] Web request ID received:', message.webRequestId);
+      // 保存 webRequestId 供后续使用
+      window._lastWebRequestId = message.webRequestId;
+    }
+  });
 
   // 拦截 Fetch API
   const originalFetch = window.fetch;
   window.fetch = async function(...args) {
     const url = typeof args[0] === 'string' ? args[0] : args[0].url;
     const method = (args[1]?.method || 'GET').toUpperCase();
+    
+    console.log('[Content Script] Fetch intercepted:', method, url);
     
     try {
       const response = await originalFetch(...args);
@@ -33,24 +40,32 @@
       // 尝试获取响应体
       try {
         const body = await clonedResponse.text();
+        console.log('[Content Script] Fetch response body length:', body.length);
         
-        // 发送到 background（不使用 requestId，让 background 匹配）
-        if (currentTabId) {
+        // 发送到 background
+        if (currentTabId && body && body.length > 0) {
           chrome.runtime.sendMessage({
             action: 'saveResponseBody',
             tabId: currentTabId,
+            webRequestId: window._lastWebRequestId,
             responseBody: body
-          }).catch(() => {
-            // 忽略错误（可能是 background 未准备好）
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('[Content Script] Error sending response body:', chrome.runtime.lastError);
+            } else if (!response.success) {
+              console.log('[Content Script] Response body not saved:', response.error);
+            } else {
+              console.log('[Content Script] Response body saved successfully');
+            }
           });
         }
       } catch (e) {
-        console.error('Failed to read response body:', e);
+        console.error('[Content Script] Failed to read response body:', e);
       }
       
       return response;
     } catch (error) {
-      console.error('Fetch error:', error);
+      console.error('[Content Script] Fetch error:', error);
       throw error;
     }
   };
@@ -61,9 +76,9 @@
   const originalXHRSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
 
   XMLHttpRequest.prototype.open = function(method, url, ...args) {
-    this._requestId = generateRequestId(url, method);
-    this._requestMethod = method;
     this._requestUrl = url;
+    this._requestMethod = method;
+    console.log('[Content Script] XHR open:', method, url);
     return originalXHROpen.apply(this, [method, url, ...args]);
   };
 
@@ -89,17 +104,26 @@
           const body = xhr.responseText || xhr.response;
           
           if (body && currentTabId) {
+            console.log('[Content Script] XHR response body length:', body.length);
+            
             // 发送到 background
             chrome.runtime.sendMessage({
               action: 'saveResponseBody',
               tabId: currentTabId,
+              webRequestId: window._lastWebRequestId,
               responseBody: body
-            }).catch(() => {
-              // 忽略错误
+            }, (response) => {
+              if (chrome.runtime.lastError) {
+                console.error('[Content Script] Error sending XHR response body:', chrome.runtime.lastError);
+              } else if (!response.success) {
+                console.log('[Content Script] XHR response body not saved:', response.error);
+              } else {
+                console.log('[Content Script] XHR response body saved successfully');
+              }
             });
           }
         } catch (e) {
-          console.error('Failed to read XHR response:', e);
+          console.error('[Content Script] Failed to read XHR response:', e);
         }
       }
     };
@@ -107,5 +131,5 @@
     return originalXHRSend.apply(this, args);
   };
 
-  console.log('Network Analyzer: Fetch and XMLHttpRequest interceptors installed');
+  console.log('[Content Script] Fetch and XMLHttpRequest interceptors installed');
 })();

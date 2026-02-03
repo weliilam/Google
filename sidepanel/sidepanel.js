@@ -5,6 +5,8 @@ let allRequests = [];
 let selectedRequest = null;
 let autoRefreshInterval = null;
 
+console.log('[Side Panel] Loading...');
+
 // 翻译字典
 const translationDict = {
   'userId': '用户ID', 'userName': '用户名', 'userEmail': '用户邮箱',
@@ -83,6 +85,7 @@ const translationDict = {
 
 // 初始化
 document.addEventListener('DOMContentLoaded', async () => {
+  console.log('[Side Panel] DOMContentLoaded');
   await loadRequests();
   setupEventListeners();
   startAutoRefresh();
@@ -101,24 +104,35 @@ function setupEventListeners() {
 
 // 加载请求
 async function loadRequests() {
+  console.log('[Side Panel] Loading requests...');
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) return;
+    if (!tab) {
+      console.log('[Side Panel] No active tab');
+      return;
+    }
     
     currentTabId = tab.id;
+    console.log('[Side Panel] Current tab ID:', currentTabId);
     
     chrome.runtime.sendMessage(
       { action: 'getRequests', tabId: currentTabId },
       (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('[Side Panel] Error loading requests:', chrome.runtime.lastError);
+          return;
+        }
+        
         if (response && response.requests) {
           allRequests = response.requests;
+          console.log('[Side Panel] Requests loaded:', allRequests.length);
           updateStats();
           renderRequests();
         }
       }
     );
   } catch (error) {
-    console.error('加载请求失败:', error);
+    console.error('[Side Panel] Load requests failed:', error);
   }
 }
 

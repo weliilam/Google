@@ -1,7 +1,15 @@
 // Background Service Worker
 
-// 存储所有请求的数据
+// 存储所有请求的数据 - 使用 tabId 作为 key
 const tabRequests = new Map();
+
+// 请求计数器，用于生成唯一 ID
+let requestCounter = 0;
+
+// 生成唯一请求 ID
+function generateRequestId() {
+  return `req_${Date.now()}_${++requestCounter}`;
+}
 
 // 监听 webRequest 事件
 chrome.webRequest.onBeforeRequest.addListener(
@@ -9,15 +17,17 @@ chrome.webRequest.onBeforeRequest.addListener(
     // 跳过扩展自己的请求
     if (details.tabId === -1) return;
     
-    const requestId = `${details.requestId}-${details.tabId}`;
+    const requestId = generateRequestId();
+    const requestType = getRequestType(details);
     
     // 初始化请求数据
-    tabRequests.set(requestId, {
+    const requestData = {
       id: requestId,
+      webRequestId: details.requestId,
       tabId: details.tabId,
       method: details.method,
       url: details.url,
-      type: getRequestType(details),
+      type: requestType,
       statusCode: 0,
       duration: 0,
       startTime: Date.now(),
@@ -25,6 +35,19 @@ chrome.webRequest.onBeforeRequest.addListener(
       responseBody: null,
       requestHeaders: {},
       responseHeaders: {}
+    };
+    
+    // 存储请求
+    if (!tabRequests.has(details.tabId)) {
+      tabRequests.set(details.tabId, []);
+    }
+    tabRequests.get(details.tabId).push(requestData);
+    
+    console.log('[Background] Request captured:', {
+      id: requestId,
+      url: details.url,
+      method: details.method,
+      type: requestType
     });
   },
   { urls: ['<all_urls>'] },
@@ -36,9 +59,11 @@ chrome.webRequest.onSendHeaders.addListener(
   (details) => {
     if (details.tabId === -1) return;
     
-    const requestId = `${details.requestId}-${details.tabId}`;
-    const request = tabRequests.get(requestId);
+    const tabRequestList = tabRequests.get(details.tabId);
+    if (!tabRequestList) return;
     
+    // 查找对应的请求（通过 webRequestId）
+    const request = tabRequestList.find(r => r.webRequestId === details.requestId);
     if (request) {
       request.requestHeaders = {};
       details.requestHeaders.forEach(header => {
@@ -69,9 +94,11 @@ chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
     if (details.tabId === -1) return;
     
-    const requestId = `${details.requestId}-${details.tabId}`;
-    const request = tabRequests.get(requestId);
+    const tabRequestList = tabRequests.get(details.tabId);
+    if (!tabRequestList) return;
     
+    // 查找对应的请求
+    const request = tabRequestList.find(r => r.webRequestId === details.requestId);
     if (request) {
       request.statusCode = details.statusCode;
       request.responseHeaders = {};
@@ -89,11 +116,20 @@ chrome.webRequest.onCompleted.addListener(
   (details) => {
     if (details.tabId === -1) return;
     
-    const requestId = `${details.requestId}-${details.tabId}`;
-    const request = tabRequests.get(requestId);
+    const tabRequestList = tabRequests.get(details.tabId);
+    if (!tabRequestList) return;
     
+    // 查找对应的请求
+    const request = tabRequestList.find(r => r.webRequestId === details.requestId);
     if (request) {
       request.duration = details.timeStamp - request.startTime;
+      
+      console.log('[Background] Request completed:', {
+        id: request.id,
+        url: request.url,
+        status: request.statusCode,
+        duration: request.duration
+      });
       
       // 通知 Side Panel 更新
       notifySidePanel(details.tabId);
@@ -107,13 +143,21 @@ chrome.webRequest.onErrorOccurred.addListener(
   (details) => {
     if (details.tabId === -1) return;
     
-    const requestId = `${details.requestId}-${details.tabId}`;
-    const request = tabRequests.get(requestId);
+    const tabRequestList = tabRequests.get(details.tabId);
+    if (!tabRequestList) return;
     
+    // 查找对应的请求
+    const request = tabRequestList.find(r => r.webRequestId === details.requestId);
     if (request) {
       request.statusCode = 0;
       request.error = details.error;
       request.duration = details.timeStamp - request.startTime;
+      
+      console.log('[Background] Request error:', {
+        id: request.id,
+        url: request.url,
+        error: details.error
+      });
       
       // 通知 Side Panel 更新
       notifySidePanel(details.tabId);
@@ -122,65 +166,90 @@ chrome.webRequest.onErrorOccurred.addListener(
   { urls: ['<all_urls>'] }
 );
 
-// 监听来自 content script 的消息（响应体数据）
+// 监听来自 content script 的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'getCurrentTabId') {
-    const tabId = sender.tab?.id;
-    sendResponse({ tabId });
-    return true;
+  const tabId = sender.tab?.id;
+  if (!tabId) {
+    console.log('[Background] No tabId in message');
+    sendResponse({ success: false, error: 'No tabId' });
+    return;
   }
-
+  
   if (message.action === 'saveResponseBody') {
-    const { requestId, responseBody } = message;
+    const { responseBody, webRequestId } = message;
     
-    // 获取发送消息的标签页 ID
-    const tabId = sender.tab?.id;
-    if (!tabId) {
-      sendResponse({ success: false });
+    const tabRequestList = tabRequests.get(tabId);
+    if (!tabRequestList) {
+      console.log('[Background] No requests for tab:', tabId);
+      sendResponse({ success: false, error: 'No requests' });
       return;
     }
     
-    // 查找对应的请求
-    for (const [key, request] of tabRequests.entries()) {
-      if (request.tabId === tabId) {
+    // 如果提供了 webRequestId，直接匹配
+    if (webRequestId) {
+      const request = tabRequestList.find(r => r.webRequestId === webRequestId);
+      if (request) {
         request.responseBody = responseBody;
+        console.log('[Background] Response body saved (by webRequestId):', {
+          id: request.id,
+          length: responseBody.length
+        });
         
-        // 通知 Side Panel 更新
         notifySidePanel(tabId);
-        break;
+        sendResponse({ success: true });
+        return;
       }
     }
     
-    sendResponse({ success: true });
+    // 否则，添加到最新的 XHR/Fetch 请求
+    const xhrFetchRequests = tabRequestList.filter(r => 
+      r.type === 'xhr' || r.type === 'fetch'
+    );
+    
+    if (xhrFetchRequests.length > 0) {
+      // 找到最新的且没有响应体的请求
+      const latestRequest = [...xhrFetchRequests].reverse().find(r => !r.responseBody);
+      if (latestRequest) {
+        latestRequest.responseBody = responseBody;
+        console.log('[Background] Response body saved (latest):', {
+          id: latestRequest.id,
+          url: latestRequest.url,
+          length: responseBody.length
+        });
+        
+        notifySidePanel(tabId);
+        sendResponse({ success: true });
+        return;
+      }
+    }
+    
+    console.log('[Background] No matching request found');
+    sendResponse({ success: false, error: 'No matching request' });
     return true;
   }
   
   if (message.action === 'getRequests') {
-    const { tabId } = message;
     const requests = getRequestsByTabId(tabId);
+    console.log('[Background] Returning requests:', requests.length);
     sendResponse({ requests });
     return true;
   }
   
   if (message.action === 'clearRequests') {
-    const { tabId } = message;
     clearRequestsByTabId(tabId);
     sendResponse({ success: true });
     return true;
   }
   
   if (message.action === 'refreshRequests') {
-    const { tabId } = message;
     notifySidePanel(tabId);
     sendResponse({ success: true });
     return true;
   }
   
-  if (message.action === 'openSidePanel') {
-    const { tabId } = message;
-    chrome.sidePanel.open({ tabId }).catch(() => {
-      // 忽略错误
-    });
+  if (message.action === 'getCurrentTabId') {
+    sendResponse({ tabId });
+    return true;
   }
 });
 
@@ -202,12 +271,7 @@ function getRequestType(details) {
 
 // 根据 tabId 获取请求列表
 function getRequestsByTabId(tabId) {
-  const requests = [];
-  for (const [key, request] of tabRequests.entries()) {
-    if (request.tabId === tabId) {
-      requests.push(request);
-    }
-  }
+  const requests = tabRequests.get(tabId) || [];
   
   // 按时间倒序排列
   return requests.sort((a, b) => b.startTime - a.startTime);
@@ -215,16 +279,11 @@ function getRequestsByTabId(tabId) {
 
 // 根据 tabId 清空请求列表
 function clearRequestsByTabId(tabId) {
-  for (const [key, request] of tabRequests.entries()) {
-    if (request.tabId === tabId) {
-      tabRequests.delete(key);
-    }
-  }
+  tabRequests.delete(tabId);
 }
 
 // 通知 Side Panel 更新
 function notifySidePanel(tabId) {
-  // 发送消息给 Side Panel
   chrome.runtime.sendMessage({
     action: 'requestUpdated',
     tabId: tabId
@@ -236,6 +295,7 @@ function notifySidePanel(tabId) {
 // 监听标签页关闭，清理对应的数据
 chrome.tabs.onRemoved.addListener((tabId) => {
   clearRequestsByTabId(tabId);
+  console.log('[Background] Tab closed, requests cleared:', tabId);
 });
 
 // 监听标签页更新
@@ -244,3 +304,5 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     notifySidePanel(tabId);
   }
 });
+
+console.log('[Background] Service Worker loaded');
